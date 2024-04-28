@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::TcpListener;
 
 fn main() {
@@ -6,10 +6,27 @@ fn main() {
 
     for stream in listener.incoming() {
         match stream {
-            Ok(mut _stream) => {
-                // send PONG
-                let pong = "+PONG\r\n";
-                _stream.write(pong.as_bytes()).unwrap();
+            Ok(mut stream) => {
+                loop {
+                    let mut buffer = [0; 512];
+                    match stream.read(&mut buffer) {
+                        Ok(n) => {
+                            if n == 0 {
+                                break;
+                            }
+                            let request = String::from_utf8_lossy(&buffer[..n]);
+                            println!("request: {}", request);
+                            if request.contains("PING") {
+                                let response = "+PONG\r\n";
+                                stream.write(response.as_bytes()).unwrap();
+                                stream.flush().unwrap();
+                            }
+                        }
+                        Err(e) => {
+                            println!("error: {}", e);
+                        }
+                    }
+                }
             }
             Err(e) => {
                 println!("error: {}", e);
