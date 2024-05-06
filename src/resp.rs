@@ -1,22 +1,33 @@
 use nom::branch::alt;
-use nom::bytes::complete::tag;
-use nom::character::complete::{crlf, digit1, not_line_ending};
+use nom::bytes::complete::{tag, take, take_while1};
+use nom::character::complete::{crlf, digit1};
 use nom::combinator::map_res;
 use nom::IResult;
 
 #[derive(Debug, PartialEq)]
 enum RespToken {
     SimpleString(String),
+    BulkString(String),
     Integer(i64),
     Array(Vec<RespToken>),
 }
 
 fn parse_simple_string(s: &str) -> IResult<&str, RespToken> {
     let (s, _) = tag("+")(s)?;
-    let (s, value) = not_line_ending(s)?;
+    let (s, value) = take_while1(|c| c != '\r' && c != '\n')(s)?;
     let (s, _) = crlf(s)?;
 
     Ok((s, RespToken::SimpleString(value.to_string())))
+}
+
+fn parse_bulk_string(s: &str) -> IResult<&str, RespToken> {
+    let (s, _) = tag("$")(s)?;
+    let (s, len) : (&str, usize) = map_res(digit1, str::parse)(s)?;
+    let (s, _) = crlf(s)?;
+    let (s, value) = take(len)(s)?;
+    let (s, _) = crlf(s)?;
+
+    Ok((s, RespToken::BulkString(value.to_string())))
 }
 
 fn parse_integer(s: &str) -> IResult<&str, RespToken> {
@@ -44,7 +55,7 @@ fn parse_array(s: &str) -> IResult<&str, RespToken> {
 }
 
 fn parse_resp_token(s: &str) -> IResult<&str, RespToken> {
-    alt((parse_simple_string, parse_integer, parse_array))(s)
+    alt((parse_simple_string, parse_bulk_string, parse_integer, parse_array))(s)
 }
 
 // test code
@@ -64,6 +75,21 @@ mod tests {
                 assert_eq!(token, expected);
             }
             Err(_) => panic!("parse_simple_string failed"),
+        }
+    }
+    
+    #[test]
+    fn bulk_string_success() {
+        let input = "$6\r\nfoobar\r\n";
+        let expected = RespToken::BulkString("foobar".to_string());
+        let result = parse_bulk_string(input);
+        
+        match result {
+            Ok((s, token)) =>  {
+                assert_eq!(s, "");
+                assert_eq!(token, expected);
+            }
+            Err(_) => panic!("parse_bulk_string failed"),
         }
     }
     
