@@ -1,8 +1,9 @@
-mod resp;
-
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread::spawn;
+
+mod resp;
+mod command;
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:6379").unwrap();

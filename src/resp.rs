@@ -5,7 +5,7 @@ use nom::combinator::map_res;
 use nom::IResult;
 
 #[derive(Debug, PartialEq)]
-enum RespToken {
+pub enum RespToken {
     SimpleString(String),
     BulkString(String),
     Integer(i64),
@@ -46,7 +46,7 @@ fn parse_array(s: &str) -> IResult<&str, RespToken> {
     let mut tokens = Vec::with_capacity(len);
     let mut s = s;
     for _ in 0..len {
-        let (s_, token) = parse_resp_token(s)?;
+        let (s_, token) = tokenize(s)?;
         s = s_;
         tokens.push(token);
     }
@@ -54,7 +54,7 @@ fn parse_array(s: &str) -> IResult<&str, RespToken> {
     Ok((s, RespToken::Array(tokens)))
 }
 
-fn parse_resp_token(s: &str) -> IResult<&str, RespToken> {
+fn tokenize(s: &str) -> IResult<&str, RespToken> {
     alt((
         parse_simple_string,
         parse_bulk_string,
