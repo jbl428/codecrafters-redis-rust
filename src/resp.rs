@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take, take_while1};
 use nom::character::complete::{crlf, digit1};
@@ -61,6 +63,24 @@ fn tokenize(s: &str) -> IResult<&str, RespToken> {
         parse_integer,
         parse_array,
     ))(s)
+}
+
+impl Display for RespToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RespToken::SimpleString(s) => write!(f, "+{}\r\n", s),
+            RespToken::BulkString(s) => write!(f, "${}\r\n{}\r\n", s.len(), s),
+            RespToken::Integer(i) => write!(f, ":{}\r\n", i),
+            RespToken::Array(tokens) => {
+                let mut s = String::new();
+                s.push_str(&format!("*{}\r\n", tokens.len()));
+                for token in tokens {
+                    s.push_str(&format!("{}", token));
+                }
+                write!(f, "{}", s)
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -128,5 +148,63 @@ mod tests {
             }
             Err(_) => panic!("parse_array failed"),
         }
+    }
+
+    #[test]
+    fn display_simple_string() {
+        let token = RespToken::SimpleString("OK".to_string());
+        let expected = "+OK\r\n";
+        let result = token.to_string();
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn display_bulk_string() {
+        let token = RespToken::BulkString("foobar".to_string());
+        let expected = "$6\r\nfoobar\r\n";
+        let result = token.to_string();
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn display_integer() {
+        let token = RespToken::Integer(1000);
+        let expected = ":1000\r\n";
+        let result = token.to_string();
+
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn display_array() {
+        let token = RespToken::Array(vec![
+            RespToken::SimpleString("OK".to_string()),
+            RespToken::Integer(1000),
+        ]);
+        let expected = "*2\r\n+OK\r\n:1000\r\n";
+        let result = token.to_string();
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn display_nested_array() {
+        let token = RespToken::Array(vec![
+            RespToken::Array(vec![
+                RespToken::SimpleString("OK".to_string()),
+                RespToken::Integer(1000),
+            ]),
+            RespToken::Array(vec![
+                RespToken::SimpleString("ERR".to_string()),
+                RespToken::Integer(2000),
+            ]),
+        ]);
+        let expected = "*2\r\n*2\r\n+OK\r\n:1000\r\n*2\r\n+ERR\r\n:2000\r\n";
+        let result = token.to_string();
+
+        assert_eq!(result, expected);
     }
 }
