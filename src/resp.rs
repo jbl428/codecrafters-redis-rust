@@ -11,6 +11,7 @@ pub enum RespToken {
     SimpleString(String),
     SimpleError(String),
     BulkString(String),
+    NullBulkString,
     Integer(i64),
     Array(Vec<RespToken>),
 }
@@ -31,6 +32,12 @@ fn parse_bulk_string(s: &str) -> IResult<&str, RespToken> {
     let (s, _) = crlf(s)?;
 
     Ok((s, RespToken::BulkString(value.to_string())))
+}
+
+fn parse_null_bulk_string(s: &str) -> IResult<&str, RespToken> {
+    let (s, _) = tag("$-1\r\n")(s)?;
+
+    Ok((s, RespToken::NullBulkString))
 }
 
 fn parse_integer(s: &str) -> IResult<&str, RespToken> {
@@ -61,6 +68,7 @@ pub fn tokenize(s: &str) -> IResult<&str, RespToken> {
     alt((
         parse_simple_string,
         parse_bulk_string,
+        parse_null_bulk_string,
         parse_integer,
         parse_array,
     ))(s)
@@ -72,6 +80,7 @@ impl Display for RespToken {
             RespToken::SimpleString(s) => write!(f, "+{}\r\n", s),
             RespToken::SimpleError(s) => write!(f, "-{}\r\n", s),
             RespToken::BulkString(s) => write!(f, "${}\r\n{}\r\n", s.len(), s),
+            RespToken::NullBulkString => write!(f, "$-1\r\n"),
             RespToken::Integer(i) => write!(f, ":{}\r\n", i),
             RespToken::Array(tokens) => {
                 let mut s = String::new();
@@ -93,7 +102,7 @@ mod tests {
     fn simple_string_success() {
         let input = "+OK\r\n";
         let expected = RespToken::SimpleString("OK".to_string());
-        let result = parse_simple_string(input);
+        let result = tokenize(input);
 
         match result {
             Ok((s, token)) => {
@@ -108,7 +117,7 @@ mod tests {
     fn bulk_string_success() {
         let input = "$6\r\nfoobar\r\n";
         let expected = RespToken::BulkString("foobar".to_string());
-        let result = parse_bulk_string(input);
+        let result = tokenize(input);
 
         match result {
             Ok((s, token)) => {
@@ -120,10 +129,25 @@ mod tests {
     }
 
     #[test]
+    fn null_bulk_string_success() {
+        let input = "$-1\r\n";
+        let expected = RespToken::NullBulkString;
+        let result = tokenize(input);
+
+        match result {
+            Ok((s, token)) => {
+                assert_eq!(s, "");
+                assert_eq!(token, expected);
+            }
+            Err(_) => panic!("parse_null_bulk_string failed"),
+        }
+    }
+
+    #[test]
     fn integer_success() {
         let input = ":1000\r\n";
         let expected = RespToken::Integer(1000);
-        let result = parse_integer(input);
+        let result = tokenize(input);
 
         match result {
             Ok((s, token)) => {
@@ -141,7 +165,7 @@ mod tests {
             RespToken::SimpleString("OK".to_string()),
             RespToken::Integer(1000),
         ]);
-        let result = parse_array(input);
+        let result = tokenize(input);
 
         match result {
             Ok((s, token)) => {
@@ -165,6 +189,15 @@ mod tests {
     fn display_bulk_string() {
         let token = RespToken::BulkString("foobar".to_string());
         let expected = "$6\r\nfoobar\r\n";
+        let result = token.to_string();
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn display_null_bulk_string() {
+        let token = RespToken::NullBulkString;
+        let expected = "$-1\r\n";
         let result = token.to_string();
 
         assert_eq!(result, expected);
