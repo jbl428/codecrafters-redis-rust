@@ -9,6 +9,7 @@ use nom::IResult;
 #[derive(Debug, PartialEq)]
 pub enum RespToken {
     SimpleString(String),
+    SimpleError(String),
     BulkString(String),
     Integer(i64),
     Array(Vec<RespToken>),
@@ -56,7 +57,7 @@ fn parse_array(s: &str) -> IResult<&str, RespToken> {
     Ok((s, RespToken::Array(tokens)))
 }
 
-fn tokenize(s: &str) -> IResult<&str, RespToken> {
+pub fn tokenize(s: &str) -> IResult<&str, RespToken> {
     alt((
         parse_simple_string,
         parse_bulk_string,
@@ -69,6 +70,7 @@ impl Display for RespToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RespToken::SimpleString(s) => write!(f, "+{}\r\n", s),
+            RespToken::SimpleError(s) => write!(f, "-{}\r\n", s),
             RespToken::BulkString(s) => write!(f, "${}\r\n{}\r\n", s.len(), s),
             RespToken::Integer(i) => write!(f, ":{}\r\n", i),
             RespToken::Array(tokens) => {
@@ -173,7 +175,6 @@ mod tests {
         let token = RespToken::Integer(1000);
         let expected = ":1000\r\n";
         let result = token.to_string();
-
 
         assert_eq!(result, expected);
     }
