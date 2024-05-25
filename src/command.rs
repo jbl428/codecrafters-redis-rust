@@ -53,6 +53,54 @@ impl CommandHandler for EchoHandler {
     }
 }
 
+struct GetHandler;
+
+impl CommandHandler for GetHandler {
+    fn try_handle(&self, context: &CommandContext) -> Option<RespToken> {
+        if let Array(elements) = &context.token {
+            if elements.len() != 2 {
+                return None;
+            }
+
+            if let (BulkString(command), BulkString(key)) = (&elements[0], &elements[1]) {
+                if command.to_uppercase() != "GET" {
+                    return None;
+                }
+                if let Some(value) = context.store.get(key) {
+                    return Some(BulkString(value));
+                }
+                return Some(NullBulkString);
+            }
+        }
+        None
+    }
+}
+
+struct SetHandler;
+
+impl CommandHandler for SetHandler {
+    fn try_handle(&self, context: &CommandContext) -> Option<RespToken> {
+        if let Array(elements) = &context.token {
+            if elements.len() != 3 {
+                return None;
+            }
+
+            if let (BulkString(command), BulkString(key), BulkString(value)) =
+                (&elements[0], &elements[1], &elements[2])
+            {
+                if command.to_uppercase() != "SET" {
+                    return None;
+                }
+
+                context.store.insert(key.to_string(), value.to_string());
+
+                return Some(SimpleString("OK".to_string()));
+            }
+        }
+        None
+    }
+}
+
 pub struct CommandDispatcher {
     handlers: Vec<Box<dyn CommandHandler>>,
 }
@@ -60,7 +108,12 @@ pub struct CommandDispatcher {
 impl CommandDispatcher {
     pub fn new() -> Self {
         CommandDispatcher {
-            handlers: vec![Box::new(PingHandler), Box::new(EchoHandler)],
+            handlers: vec![
+                Box::new(PingHandler),
+                Box::new(EchoHandler),
+                Box::new(GetHandler),
+                Box::new(SetHandler),
+            ],
         }
     }
 
@@ -118,5 +171,39 @@ mod tests {
         let response = dispatcher.dispatch(&context);
 
         assert_eq!(response, SimpleError("unknown command".to_string()));
+    }
+
+    #[test]
+    fn test_get() {
+        let dispatcher = CommandDispatcher::new();
+        let token = Array(vec![
+            BulkString("GET".to_string()),
+            BulkString("key".to_string()),
+        ]);
+        let store = Store::new();
+        store.insert("key".to_string(), "value".to_string());
+        let context = CommandContext { token, store };
+        let response = dispatcher.dispatch(&context);
+
+        assert_eq!(response, BulkString("value".to_string()));
+    }
+
+    #[test]
+    fn test_set() {
+        let dispatcher = CommandDispatcher::new();
+        let token = Array(vec![
+            BulkString("SET".to_string()),
+            BulkString("key".to_string()),
+            BulkString("value".to_string()),
+        ]);
+        let store = Store::new();
+        let context = CommandContext {
+            token,
+            store: store.clone(),
+        };
+        let response = dispatcher.dispatch(&context);
+
+        assert_eq!(response, SimpleString("OK".to_string()));
+        assert_eq!(store.get("key"), Some("value".to_string()));
     }
 }
