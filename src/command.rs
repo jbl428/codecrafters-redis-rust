@@ -1,9 +1,15 @@
 use RespToken::*;
 
 use crate::resp::RespToken;
+use crate::store::Store;
+
+pub struct CommandContext {
+    pub token: RespToken,
+    pub store: Store,
+}
 
 trait CommandHandler {
-    fn try_handle(&self, token: &RespToken) -> Option<RespToken>;
+    fn try_handle(&self, context: &CommandContext) -> Option<RespToken>;
 }
 
 struct PingHandler;
@@ -13,17 +19,15 @@ impl PingHandler {
         match token {
             SimpleString(s) if s.to_uppercase() == "PING" => true,
             BulkString(s) if s.to_uppercase() == "PING" => true,
-            Array(elements) if elements.len() == 1 => {
-                self.is_ping(&elements[0])
-            }
+            Array(elements) if elements.len() == 1 => self.is_ping(&elements[0]),
             _ => false,
         }
     }
 }
 
 impl CommandHandler for PingHandler {
-    fn try_handle(&self, token: &RespToken) -> Option<RespToken> {
-        if self.is_ping(token) {
+    fn try_handle(&self, context: &CommandContext) -> Option<RespToken> {
+        if self.is_ping(&context.token) {
             return Some(BulkString("PONG".to_string()));
         }
         None
@@ -33,8 +37,8 @@ impl CommandHandler for PingHandler {
 struct EchoHandler;
 
 impl CommandHandler for EchoHandler {
-    fn try_handle(&self, token: &RespToken) -> Option<RespToken> {
-        if let Array(elements) = token {
+    fn try_handle(&self, context: &CommandContext) -> Option<RespToken> {
+        if let Array(elements) = &context.token {
             if elements.len() != 2 {
                 return None;
             }
@@ -60,9 +64,9 @@ impl CommandDispatcher {
         }
     }
 
-    pub fn dispatch(&self, token: &RespToken) -> RespToken {
+    pub fn dispatch(&self, context: &CommandContext) -> RespToken {
         for handler in &self.handlers {
-            if let Some(response) = handler.try_handle(token) {
+            if let Some(response) = handler.try_handle(context) {
                 return response;
             }
         }
@@ -78,7 +82,11 @@ mod tests {
     fn test_ping() {
         let dispatcher = CommandDispatcher::new();
         let token = BulkString("PinG".to_string());
-        let response = dispatcher.dispatch(&token);
+        let context = CommandContext {
+            token,
+            store: Store::new(),
+        };
+        let response = dispatcher.dispatch(&context);
 
         assert_eq!(response, BulkString("PONG".to_string()));
     }
@@ -90,7 +98,11 @@ mod tests {
             BulkString("ecHO".to_string()),
             BulkString("Hello".to_string()),
         ]);
-        let response = dispatcher.dispatch(&token);
+        let context = CommandContext {
+            token,
+            store: Store::new(),
+        };
+        let response = dispatcher.dispatch(&context);
 
         assert_eq!(response, BulkString("Hello".to_string()));
     }
@@ -99,11 +111,12 @@ mod tests {
     fn test_unknown_command() {
         let dispatcher = CommandDispatcher::new();
         let token = BulkString("unknown".to_string());
-        let response = dispatcher.dispatch(&token);
+        let context = CommandContext {
+            token,
+            store: Store::new(),
+        };
+        let response = dispatcher.dispatch(&context);
 
-        assert_eq!(
-            response,
-            SimpleError("unknown command".to_string())
-        );
+        assert_eq!(response, SimpleError("unknown command".to_string()));
     }
 }
