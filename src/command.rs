@@ -82,7 +82,6 @@ struct SetHandler;
 
 impl SetHandler {
     fn handle_without_ttl(
-        &self,
         elements: &[RespToken],
         context: &CommandContext,
     ) -> Option<RespToken> {
@@ -107,7 +106,6 @@ impl SetHandler {
     }
 
     fn handle_with_ttl(
-        &self,
         elements: &[RespToken],
         context: &CommandContext,
     ) -> Option<RespToken> {
@@ -151,13 +149,9 @@ impl SetHandler {
 impl CommandHandler for SetHandler {
     fn try_handle(&self, context: &CommandContext) -> Option<RespToken> {
         if let Array(elements) = &context.token {
-            if elements.len() == 3 {
-                return self.handle_without_ttl(elements, context);
-            }
-
-            if elements.len() == 5 {
-                return self.handle_with_ttl(elements, context);
-            }
+            return SetHandler::handle_without_ttl(elements, context).or_else(|| {
+                SetHandler::handle_with_ttl(elements, context)
+            });
         }
         None
     }
