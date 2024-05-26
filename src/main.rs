@@ -14,7 +14,13 @@ mod store;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:6379").await?;
+    let args: Vec<String> = std::env::args().collect();
+    let port = args
+        .get(2)
+        .and_then(|s| s.parse::<u16>().ok())
+        .unwrap_or(6379);
+    let address = format!("127.0.0.1:{}", port);
+    let listener = TcpListener::bind(address).await?;
     let store = Store::new();
 
     loop {
