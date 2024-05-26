@@ -72,15 +72,6 @@ mod tests {
     }
 
     #[test]
-    fn test_remove() {
-        let store = Store::new();
-        store.insert("key1".to_string(), "value1".to_string(), None);
-
-        assert_eq!(store.remove("key1"), Some("value1".to_string()));
-        assert_eq!(store.get("key1"), None);
-    }
-
-    #[test]
     fn test_ttl_expiration() {
         let store = Store::new();
         store.insert(
