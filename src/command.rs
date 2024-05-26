@@ -92,7 +92,7 @@ impl CommandHandler for SetHandler {
                     return None;
                 }
 
-                context.store.insert(key.to_string(), value.to_string());
+                context.store.insert(key.to_string(), value.to_string(), None);
 
                 return Some(SimpleString("OK".to_string()));
             }
@@ -181,7 +181,7 @@ mod tests {
             BulkString("key".to_string()),
         ]);
         let store = Store::new();
-        store.insert("key".to_string(), "value".to_string());
+        store.insert("key".to_string(), "value".to_string(), None);
         let context = CommandContext { token, store };
         let response = dispatcher.dispatch(&context);
 
