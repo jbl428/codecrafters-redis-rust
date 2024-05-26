@@ -34,13 +34,6 @@ impl Store {
         }
         data.get(key).cloned()
     }
-
-    pub fn remove(&self, key: &str) -> Option<String> {
-        let mut data = self.data.write().unwrap();
-        let mut expirations = self.expirations.write().unwrap();
-        expirations.remove(key);
-        data.remove(key)
-    }
 }
 
 impl Clone for Store {

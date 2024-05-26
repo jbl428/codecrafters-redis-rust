@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use RespToken::*;
 
 use crate::resp::RespToken;
@@ -78,23 +80,83 @@ impl CommandHandler for GetHandler {
 
 struct SetHandler;
 
-impl CommandHandler for SetHandler {
-    fn try_handle(&self, context: &CommandContext) -> Option<RespToken> {
-        if let Array(elements) = &context.token {
-            if elements.len() != 3 {
+impl SetHandler {
+    fn handle_without_ttl(
+        &self,
+        elements: &[RespToken],
+        context: &CommandContext,
+    ) -> Option<RespToken> {
+        if elements.len() != 3 {
+            return None;
+        }
+
+        if let (BulkString(command), BulkString(key), BulkString(value)) =
+            (&elements[0], &elements[1], &elements[2])
+        {
+            if command.to_uppercase() != "SET" {
                 return None;
             }
 
-            if let (BulkString(command), BulkString(key), BulkString(value)) =
-                (&elements[0], &elements[1], &elements[2])
-            {
-                if command.to_uppercase() != "SET" {
-                    return None;
-                }
+            context
+                .store
+                .insert(key.to_string(), value.to_string(), None);
 
-                context.store.insert(key.to_string(), value.to_string(), None);
+            return Some(SimpleString("OK".to_string()));
+        }
+        None
+    }
 
-                return Some(SimpleString("OK".to_string()));
+    fn handle_with_ttl(
+        &self,
+        elements: &[RespToken],
+        context: &CommandContext,
+    ) -> Option<RespToken> {
+        if elements.len() != 5 {
+            return None;
+        }
+
+        if let (
+            BulkString(command),
+            BulkString(key),
+            BulkString(value),
+            BulkString(unit),
+            BulkString(ttl),
+        ) = (
+            &elements[0],
+            &elements[1],
+            &elements[2],
+            &elements[3],
+            &elements[4],
+        ) {
+            if command.to_uppercase() != "SET" {
+                return None;
+            }
+
+            let ttl = match unit.to_uppercase().as_str() {
+                "EX" => Duration::from_secs(ttl.parse().unwrap()),
+                "PX" => Duration::from_millis(ttl.parse().unwrap()),
+                _ => return None,
+            };
+
+            context
+                .store
+                .insert(key.to_string(), value.to_string(), Some(ttl));
+
+            return Some(SimpleString("OK".to_string()));
+        }
+        None
+    }
+}
+
+impl CommandHandler for SetHandler {
+    fn try_handle(&self, context: &CommandContext) -> Option<RespToken> {
+        if let Array(elements) = &context.token {
+            if elements.len() == 3 {
+                return self.handle_without_ttl(elements, context);
+            }
+
+            if elements.len() == 5 {
+                return self.handle_with_ttl(elements, context);
             }
         }
         None
@@ -195,6 +257,27 @@ mod tests {
             BulkString("SET".to_string()),
             BulkString("key".to_string()),
             BulkString("value".to_string()),
+        ]);
+        let store = Store::new();
+        let context = CommandContext {
+            token,
+            store: store.clone(),
+        };
+        let response = dispatcher.dispatch(&context);
+
+        assert_eq!(response, SimpleString("OK".to_string()));
+        assert_eq!(store.get("key"), Some("value".to_string()));
+    }
+
+    #[test]
+    fn test_set_with_ttl() {
+        let dispatcher = CommandDispatcher::new();
+        let token = Array(vec![
+            BulkString("SET".to_string()),
+            BulkString("key".to_string()),
+            BulkString("value".to_string()),
+            BulkString("PX".to_string()),
+            BulkString("100".to_string()),
         ]);
         let store = Store::new();
         let context = CommandContext {
